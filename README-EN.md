@@ -1,13 +1,33 @@
 
 # About this repository
 
-[![build](https://github.com/lejianwen/rustdesk-server/actions/workflows/build.yaml/badge.svg)](https://github.com/lejianwen/rustdesk-server/actions/workflows/build.yaml)
+Based on [lejianwen/rustdesk-server](https://github.com/lejianwen/rustdesk-server) (`forapi`).  
+This fork: https://github.com/longwangjiang88/rustdesk-server
+
+[![build](https://github.com/longwangjiang88/rustdesk-server/actions/workflows/build.yaml/badge.svg)](https://github.com/longwangjiang88/rustdesk-server/actions/workflows/build.yaml)
+
+## Changes in this fork
+
+Inherited from upstream (lejianwen):
 
 - Solves the issue of connection timeout when the client logs in with an `API` account
 - Added `API` support to the s6 image, `API` open-source repository: https://github.com/lejianwen/rustdesk-api
 - Whether login is required to connect, `MUST_LOGIN` defaults to `N`, set to `Y` to require login for connection
 - `RUSTDESK_API_JWT_KEY`, when set, validates the token's legitimacy through `JWT`
 - Support client websocket (client >= 1.4.1)
+
+### Added: client Change ID support
+
+Upstream OSS hbbs does not support the client's **Change ID** dialog (TCP `RegisterPk` with `old_id` fails). This fork adds:
+
+| File | Change |
+|------|--------|
+| `src/rendezvous_server.rs` | Route `old_id` requests to `handle_change_id` (format check, uuid ownership, rate limit, `ID_EXISTS`) |
+| `src/peer.rs` | `rename_id` updates the peer id in memory and SQLite while keeping guid/uuid/pk |
+
+New ID rules match the official client: starts with a letter, length 6–16, only `a-zA-Z0-9_-`. Does not break `rustdesk-api` login/JWT/`MUST_LOGIN`; address-book entries with the old id may need a manual update.
+
+See the Chinese [README.md](./README.md) for build and Docker replace examples.
 
 ## docker 
 
