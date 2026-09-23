@@ -1,0 +1,35 @@
+# Cross-build Linux musl hbbs (matches official release binaries)
+# Usage:
+#   docker build -f Dockerfile.cross-hbbs -t rustdesk-hbbs-builder .
+#   docker create --name hbbs-out rustdesk-hbbs-builder
+#   docker cp hbbs-out:/out/hbbs ./dist/hbbs
+#   docker rm hbbs-out
+
+FROM rust:1.85-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    musl-tools \
+    musl-dev \
+    pkg-config \
+    cmake \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup target add x86_64-unknown-linux-musl
+
+WORKDIR /src
+COPY . .
+
+RUN git submodule update --init --recursive || true
+
+# Prefer static musl binary for dropping into s6/classic images
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+RUN cargo build --release --bin hbbs --target x86_64-unknown-linux-musl --all-features \
+    && mkdir -p /out \
+    && cp target/x86_64-unknown-linux-musl/release/hbbs /out/hbbs \
+    && strip /out/hbbs || true \
+    && file /out/hbbs || true
+
+FROM scratch AS export
+COPY --from=builder /out/hbbs /hbbs
