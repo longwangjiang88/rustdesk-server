@@ -1,15 +1,61 @@
 
 # 关于此分支
 
+基于 [lejianwen/rustdesk-server](https://github.com/lejianwen/rustdesk-server)（`forapi`）二次修改。  
+本仓库地址：https://github.com/longwangjiang88/rustdesk-server
 
+[![build](https://github.com/longwangjiang88/rustdesk-server/actions/workflows/build.yaml/badge.svg)](https://github.com/longwangjiang88/rustdesk-server/actions/workflows/build.yaml)
 
-[![build](https://github.com/lejianwen/rustdesk-server/actions/workflows/build.yaml/badge.svg)](https://github.com/lejianwen/rustdesk-server/actions/workflows/build.yaml)
+## 相对上游（lejianwen）的改动
+
+上游已包含的能力（本仓库保留）：
 
 - 解决当客户端登录了`API`账号时链接超时的问题
 - s6镜像添加了`API`支持，`API`开源地址 https://github.com/lejianwen/rustdesk-api
 - 是否必须登录才能链接， `MUST_LOGIN` 默认为 `N`，设置为 `Y` 则必须登录才能链接
 - `RUSTDESK_API_JWT_KEY`，设置后会通过`JWT`校验token的合法性
 - 支持client websocket (client >= 1.4.1)
+
+### 本仓库新增：支持客户端「修改 ID / Change ID」
+
+官方开源版与多数自建服（含原 lejianwen 镜像）**不支持**客户端设置里的「修改 ID」：客户端通过 TCP 发送带 `old_id` 的 `RegisterPk` 时，服务端会因 `pk` 为空返回格式错误，或直接 `NOT_SUPPORT`。
+
+本仓库在 `hbbs` 中补齐了该能力：
+
+| 文件 | 改动说明 |
+|------|----------|
+| `src/rendezvous_server.rs` | `handle_register_pk`：若请求带 `old_id`，走 `handle_change_id`；校验新 ID 格式、旧 ID 的 uuid 归属、限流；已被占用则返回 `ID_EXISTS` |
+| `src/peer.rs` | 新增 `rename_id`：在内存 map 与 SQLite 中把旧 ID 更新为新 ID（保留 guid / uuid / pk） |
+
+**使用说明：**
+
+1. 部署本仓库编译出的 `hbbs`（或基于本仓库打的 Docker 镜像）后，客户端联网成功即可在设置中使用「修改 ID」。
+2. 新 ID 规则与官方客户端一致：字母开头，长度 6–16，仅允许 `a-z` / `A-Z` / `0-9` / `_` / `-`。
+3. 对 `rustdesk-api` **无协议破坏**：登录、JWT、`MUST_LOGIN` 等不受影响；地址簿 / 设备列表里若仍存旧 ID，需手动更新或等设备重新同步。
+4. 仅改配置文件强制换 ID 的方式仍可用，但推荐走客户端「修改 ID」并依赖本服务端支持。
+
+**自行编译（仅换 hbbs）：**
+
+```bash
+git clone -b forapi https://github.com/longwangjiang88/rustdesk-server.git
+cd rustdesk-server
+git submodule update --init --recursive
+cargo build --release --bin hbbs
+# 产物：target/release/hbbs
+```
+
+**基于现有 s6 镜像替换 hbbs 示例：**
+
+```dockerfile
+FROM lejianwen/rustdesk-server-s6:latest
+COPY target/release/hbbs /usr/bin/hbbs
+RUN chmod +x /usr/bin/hbbs
+```
+
+```bash
+docker build -t rustdesk-server-s6:with-change-id .
+# compose 中将 image 改为 rustdesk-server-s6:with-change-id，volumes 保持不变
+```
 
 ## docker镜像地址
 
