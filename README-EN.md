@@ -29,9 +29,22 @@ New ID rules match the official client: starts with a letter, length 6–16, onl
 
 See the Chinese [README.md](./README.md) for build and Docker replace examples.
 
+## Docker Hub (recommended)
+
+- Image: https://hub.docker.com/r/ktcrdz/rustdesk-server-s6
+- Tags: `ktcrdz/rustdesk-server-s6:with-change-id` and `ktcrdz/rustdesk-server-s6:latest` (same digest)
+
+```yaml
+services:
+  rustdesk:
+    image: ktcrdz/rustdesk-server-s6:with-change-id
+    # keep your existing ports / environment / volumes
+```
+
 ## docker 
 
-- s6 Image [lejianwen/rustdesk-server-s6](https://hub.docker.com/r/lejianwen/rustdesk-server-s6)
+- **This fork (Change ID)** [ktcrdz/rustdesk-server-s6](https://hub.docker.com/r/ktcrdz/rustdesk-server-s6)
+- Upstream s6 [lejianwen/rustdesk-server-s6](https://hub.docker.com/r/lejianwen/rustdesk-server-s6)
 
 ```yaml
  networks:
@@ -47,7 +60,7 @@ See the Chinese [README.md](./README.md) for build and Docker replace examples.
        - 21117:21117
        - 21118:21118
        - 21119:21119
-     image: lejianwen/rustdesk-server-s6:latest
+     image: ktcrdz/rustdesk-server-s6:with-change-id
      environment:
        - RELAY=<relay_server[:port]>
        - ENCRYPTED_ONLY=1

@@ -34,6 +34,20 @@
 3. 对 `rustdesk-api` **无协议破坏**：登录、JWT、`MUST_LOGIN` 等不受影响；地址簿 / 设备列表里若仍存旧 ID，需手动更新或等设备重新同步。
 4. 仅改配置文件强制换 ID 的方式仍可用，但推荐走客户端「修改 ID」并依赖本服务端支持。
 
+**Docker Hub 镜像（推荐长期使用）：**
+
+- 仓库：https://hub.docker.com/r/ktcrdz/rustdesk-server-s6
+- 标签：`ktcrdz/rustdesk-server-s6:with-change-id`（亦有同内容 `latest`，若已推送）
+
+```yaml
+services:
+  rustdesk:
+    image: ktcrdz/rustdesk-server-s6:with-change-id
+    # 其余 ports / environment / volumes 与原来一致即可
+```
+
+也可用 GitHub Release 中的 tar：https://github.com/longwangjiang88/rustdesk-server/releases/tag/v1.1.14-change-id
+
 **自行编译（仅换 hbbs）：**
 
 ```bash
@@ -53,13 +67,14 @@ RUN chmod +x /usr/bin/hbbs
 ```
 
 ```bash
-docker build -t rustdesk-server-s6:with-change-id .
-# compose 中将 image 改为 rustdesk-server-s6:with-change-id，volumes 保持不变
+docker build -t ktcrdz/rustdesk-server-s6:with-change-id .
+docker push ktcrdz/rustdesk-server-s6:with-change-id
 ```
 
 ## docker镜像地址
 
-- s6 镜像 [lejianwen/rustdesk-server-s6](https://hub.docker.com/r/lejianwen/rustdesk-server-s6)
+- **本仓库改 ID 版（推荐）** [ktcrdz/rustdesk-server-s6](https://hub.docker.com/r/ktcrdz/rustdesk-server-s6)
+- 上游 s6 镜像 [lejianwen/rustdesk-server-s6](https://hub.docker.com/r/lejianwen/rustdesk-server-s6)
 
 ```yaml
  networks:
@@ -75,7 +90,7 @@ docker build -t rustdesk-server-s6:with-change-id .
        - 21117:21117
        - 21118:21118
        - 21119:21119
-     image: lejianwen/rustdesk-server-s6:latest
+     image: ktcrdz/rustdesk-server-s6:with-change-id
      environment:
        - RELAY=<relay_server[:port]>
        - ENCRYPTED_ONLY=1
