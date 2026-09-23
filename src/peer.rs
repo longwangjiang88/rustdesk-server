@@ -177,4 +177,52 @@ impl PeerMap {
     pub(crate) async fn is_in_memory(&self, id: &str) -> bool {
         self.map.read().await.contains_key(id)
     }
+
+    /// Rename a peer id (used by client Change ID). Keeps guid/uuid/pk.
+    pub(crate) async fn rename_id(
+        &mut self,
+        old_id: &str,
+        new_id: &str,
+        addr: SocketAddr,
+    ) -> register_pk_response::Result {
+        let peer = match self.get(old_id).await {
+            Some(p) => p,
+            None => return register_pk_response::Result::UUID_MISMATCH,
+        };
+        let (guid, uuid, pk, info_str) = {
+            let mut w = peer.write().await;
+            w.socket_addr = addr;
+            w.last_reg_time = Instant::now();
+            (
+                w.guid.clone(),
+                w.uuid.clone(),
+                w.pk.clone(),
+                serde_json::to_string(&w.info).unwrap_or_default(),
+            )
+        };
+        if guid.is_empty() {
+            match self.db.insert_peer(new_id, &uuid, &pk, &info_str).await {
+                Err(err) => {
+                    log::error!("db.insert_peer (rename) failed: {}", err);
+                    return register_pk_response::Result::SERVER_ERROR;
+                }
+                Ok(guid) => {
+                    peer.write().await.guid = guid;
+                }
+            }
+        } else if let Err(err) = self.db.update_pk(&guid, new_id, &pk, &info_str).await {
+            log::error!("db.update_pk (rename) failed: {}", err);
+            let msg = err.to_string().to_lowercase();
+            if msg.contains("unique") || msg.contains("constraint") {
+                return register_pk_response::Result::ID_EXISTS;
+            }
+            return register_pk_response::Result::SERVER_ERROR;
+        }
+        let mut map = self.map.write().await;
+        map.remove(old_id);
+        // Drop any empty placeholder created for new_id
+        map.insert(new_id.to_owned(), peer);
+        log::info!("id renamed from {} to {}", old_id, new_id);
+        register_pk_response::Result::OK
+    }
 }

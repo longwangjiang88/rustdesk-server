@@ -14,7 +14,9 @@ use hbb_common::{
     log,
     protobuf::{Message as _, MessageField},
     rendezvous_proto::{
-        register_pk_response::Result::{INVALID_ID_FORMAT, TOO_FREQUENT, UUID_MISMATCH},
+        register_pk_response::Result::{
+            ID_EXISTS, INVALID_ID_FORMAT, TOO_FREQUENT, UUID_MISMATCH,
+        },
         *,
     },
     sodiumoxide::crypto::{
@@ -683,6 +685,10 @@ impl RendezvousServer {
         addr: SocketAddr,
         ws: bool,
     ) -> Result<register_pk_response::Result, register_pk_response::Result> {
+        // Client Change ID sends old_id + new id + uuid (pk is empty).
+        if !rk.old_id.is_empty() {
+            return self.handle_change_id(rk, addr).await;
+        }
         if rk.uuid.is_empty() || rk.pk.is_empty() {
             return Err(INVALID_ID_FORMAT);
         }
@@ -773,6 +779,71 @@ impl RendezvousServer {
         //     ..Default::default()
         // });
         // Ok(msg_out)
+    }
+
+    /// Handle client "Change ID" (RegisterPk with old_id set, pk usually empty).
+    async fn handle_change_id(
+        &mut self,
+        rk: RegisterPk,
+        addr: SocketAddr,
+    ) -> Result<register_pk_response::Result, register_pk_response::Result> {
+        let new_id = rk.id;
+        let old_id = rk.old_id;
+        if rk.uuid.is_empty() {
+            return Err(INVALID_ID_FORMAT);
+        }
+        if !hbb_common::is_valid_custom_id(&new_id) {
+            return Err(INVALID_ID_FORMAT);
+        }
+        if new_id == old_id {
+            return Ok(register_pk_response::Result::OK);
+        }
+        let ip = addr.ip().to_string();
+        if !self.check_ip_blocker(&ip, &new_id).await {
+            return Err(TOO_FREQUENT);
+        }
+
+        let old_peer = match self.pm.get(&old_id).await {
+            Some(p) => p,
+            None => {
+                log::warn!("change_id: old id {} not found", old_id);
+                return Err(UUID_MISMATCH);
+            }
+        };
+        {
+            let peer = old_peer.read().await;
+            if peer.uuid.is_empty() || peer.uuid != rk.uuid {
+                log::warn!(
+                    "change_id: uuid mismatch for {}: {:?} vs {:?}",
+                    old_id,
+                    peer.uuid,
+                    rk.uuid
+                );
+                return Err(UUID_MISMATCH);
+            }
+            let mut req_pk = peer.reg_pk;
+            drop(peer);
+            if req_pk.1.elapsed().as_secs() > 6 {
+                req_pk.0 = 0;
+            } else if req_pk.0 > 2 {
+                return Err(TOO_FREQUENT);
+            }
+            req_pk.0 += 1;
+            req_pk.1 = Instant::now();
+            old_peer.write().await.reg_pk = req_pk;
+        }
+
+        if let Some(existing) = self.pm.get(&new_id).await {
+            let existing = existing.read().await;
+            if !existing.uuid.is_empty() && existing.uuid != rk.uuid {
+                return Err(ID_EXISTS);
+            }
+        }
+
+        match self.pm.rename_id(&old_id, &new_id, addr).await {
+            register_pk_response::Result::OK => Ok(register_pk_response::Result::OK),
+            other => Err(other),
+        }
     }
 
     #[inline]
